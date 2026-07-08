@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+ <head>
+  <title>Apple Pay Test</title>
+  <script crossOrigin="anonymous" src="https://applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js"></script>
+ </head>
+
+ <style>
+  apple-pay-button {
+   --apple-pay-button-width: 150px;
+   --apple-pay-button-height: 30px;
+   --apple-pay-button-border-radius: 3px;
+   --apple-pay-button-padding: 0px 0px;
+   --apple-pay-button-box-sizing: border-box;
+  }
+ </style>
+
+ <body>
+  <h1>Apple Pay Test</h1>
+
+  <apple-pay-button id="apple-pay-button" buttonstyle="black" type="buy" locale="en-US"></apple-pay-button>
+
+
+  <script>
+
+   const button = document.getElementById('apple-pay-button');
+
+   // Check Apple Pay support
+   if (window.ApplePaySession) {
+    console.log ("ApplePaySession exists");
+    if (ApplePaySession.canMakePayments()) {
+     console.log ("canMakePayments is true");
+     button.style.display = 'block';
+    }
+   }
+
+   button.addEventListener('click', beginApplePay);
+
+   function beginApplePay() {
+
+    const paymentRequest = {
+     countryCode: 'SI',
+     currencyCode: 'EUR',
+     supportedNetworks: [
+      'visa',
+      'masterCard'
+     ],
+     merchantCapabilities: [
+      'supports3DS'
+     ],
+     total: {
+      label: 'Test Store',
+      amount: '10.00'
+     }
+    };
+    console.log ("paymentRequest:" +  JSON.stringify(paymentRequest, null, 2));
+
+    const session = new ApplePaySession(6, paymentRequest);
+
+    // Merchant validation
+    session.onvalidatemerchant = async (event) => {
+
+     try {
+      console.log ("Merchant validation url: " + event.validationURL);
+      const response = await fetch('/apple-pay/validate', {
+       method: 'POST',
+       headers: {
+        'Content-Type': 'application/json'
+       },
+       body: JSON.stringify({
+        validationURL: event.validationURL
+       })
+      });
+
+      const merchantSession = await response.json();
+
+      session.completeMerchantValidation(
+       merchantSession
+      );
+
+     } catch (e) {
+      console.error(e);
+      session.abort();
+     }
+    };
+
+    // Payment authorized
+    session.onpaymentauthorized = async (event) => {
+
+     try {
+
+      const response = await fetch('/apple-pay/pay', {
+       method: 'POST',
+       headers: {
+        'Content-Type': 'application/json'
+       },
+       body: JSON.stringify({
+        token: event.payment.token,
+        billingContact: event.payment.billingContact,
+        shippingContact: event.payment.shippingContact
+       })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+
+       session.completePayment(
+        ApplePaySession.STATUS_SUCCESS
+       );
+
+      } else {
+
+       session.completePayment(
+        ApplePaySession.STATUS_FAILURE
+       );
+      }
+
+     } catch (e) {
+
+      session.completePayment(
+       ApplePaySession.STATUS_FAILURE
+      );
+     }
+    };
+
+    session.oncancel = () => {
+     console.log('Payment cancelled');
+    };
+
+    try {
+     session.begin();
+     console.log("session.begin() called");
+    } catch(ex) {
+     console.error(ex);
+    }
+
+    // session.begin();
+    // console.log("session.begin() called");
+   }
+
+  </script>
+
+
+ </body>
+</html>
